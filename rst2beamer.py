@@ -513,6 +513,15 @@ class block(nodes.container):
     """
     # NOTE: a simple container, has no attributes.
 
+class beamer_tikz (nodes.raw):
+    """
+    Annotations for a beamer presentation.
+
+    Named as per docutils standards and to distinguish it from core docutils
+    node type.
+    """
+    pass
+
 
 ### DIRECTIVES
 
@@ -808,6 +817,27 @@ class block_directive (Directive):
         #pdb.set_trace()
         return [body_set]
 
+class TikzDirective (Directive):
+    """
+    A directive to include notes within a beamer presentation.
+    
+    """
+    required_arguments = 0
+    optional_arguments = 0
+    final_argument_whitespace = True
+    has_content = True
+    option_spec = {}
+
+    def run (self):
+        self.assert_has_content()
+        text = '\n'.join (self.content)
+        tikz_node = beamer_tikz ("", text)
+        return [tikz_node]
+
+
+directives.register_directive ('r2b_tikz', TikzDirective)
+
+
 
 directives.register_directive('block', block_directive)
 
@@ -890,6 +920,7 @@ class BeamerTranslator (LaTeXTranslator):
         if use_pgfpages:
             self.head_prefix.append ('\\usepackage{pgfpages}\n')
         self.head_prefix.append ('\\setbeameroption{%s}\n' % option_str)
+        self.head_prefix.append ('\\usepackage{tikz}\n')
 
         if (self.cb_use_pygments):
             from pygments.formatters import LatexFormatter
@@ -910,6 +941,7 @@ class BeamerTranslator (LaTeXTranslator):
         self.in_columnset = False
         self.in_column = False
         self.in_note = False
+        self.in_tikz = False
         self.frame_level = 0
 
         # this fixes the hardcoded section titles in docutils 0.4
@@ -1415,6 +1447,17 @@ class BeamerTranslator (LaTeXTranslator):
         self.out.append ('\\end{%s}\n' % env)
 
 
+    def visit_beamer_tikz (self, node):
+        assert not self.in_tikz, "already in tikz, which cannot be nested"
+        self.in_tikz = True
+        self.out.append ('\\begin{center}\n\\begin{tikzpicture}\n')
+        self.verbatim = True
+
+    def depart_beamer_tikz (self, node):
+        self.in_tikz = False
+        self.out.append ('\n\\end{tikzpicture}\n\\end{center}\n')
+        self.verbatim = False
+
     def visit_container (self, node):
         """
         Handle containers with 'special' names, ignore the rest.
@@ -1427,6 +1470,8 @@ class BeamerTranslator (LaTeXTranslator):
            wrap_children_in_columns (node, node.children)
         elif (node_has_class (node, 'r2b-note')):
            self.visit_beamer_note (node)
+        elif (node_has_class (node, ['r2b-tikz', 'r2b_tikz'])):
+           self.visit_beamer_tikz (node)
         else:
             # currently the LaTeXTranslator does nothing, but just in case
             LaTeXTranslator.visit_container (self, node)
@@ -1436,6 +1481,8 @@ class BeamerTranslator (LaTeXTranslator):
             self.depart_columnset (node)
         elif (node_has_class (node, 'r2b-note')):
             self.depart_beamer_note (node)
+        elif (node_has_class (node, ['r2b-tikz', 'r2b_tikz'])):
+            self.depart_beamer_tikz (node)
         else:
             # currently the LaTeXTranslator does nothing, but just in case
             LaTeXTranslator.depart_container (self, node)
